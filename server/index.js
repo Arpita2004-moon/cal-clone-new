@@ -37,14 +37,20 @@ if (process.env.NODE_ENV === 'production') {
 async function start() {
   try {
     await initDB();
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-    });
+    // Only listen if we're not in a serverless environment (detected by some common vars)
+    if (process.env.NODE_ENV !== 'production' || process.env.RENDER || !process.env.VERCEL) {
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+      });
+    }
   } catch (err) {
     console.error('❌ Failed to start server:', err);
-    process.exit(1);
+    // Don't exit if on Vercel
+    if (!process.env.VERCEL) process.exit(1);
   }
 }
 
 start();
+
+module.exports = app;
 
