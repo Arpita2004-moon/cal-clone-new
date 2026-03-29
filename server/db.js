@@ -1,135 +1,215 @@
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
+const { Pool } = require('pg');
 
-/*
-  db.js - Database Layer using sql.js (pure JavaScript SQLite)
-  
-  sql.js compiles SQLite to WebAssembly, so no native build tools needed.
-  The database is stored as a file (scheduling.db) and loaded into memory.
-  Changes are saved back to disk after each write operation.
-*/
+const usePostgres = !!process.env.DATABASE_URL;
+let db = null;
+let pool = null;
+
+if (usePostgres) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+  console.log('📡 Using Postgres database');
+} else {
+  console.log('📂 Using SQLite database');
+}
 
 const DB_PATH = path.join(__dirname, 'scheduling.db');
 
-let db = null;
-
-// Initialize the database (must be called before using db)
 async function initDB() {
-  const SQL = await initSqlJs();
+  if (usePostgres) {
+    // Tables for Postgres (slightly different syntax than SQLite)
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-  // Try to load existing database file, or create new one
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      const fileBuffer = fs.readFileSync(DB_PATH);
-      db = new SQL.Database(fileBuffer);
-    } else {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS event_types (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          description TEXT,
+          duration INTEGER NOT NULL DEFAULT 30,
+          slug TEXT NOT NULL UNIQUE,
+          location TEXT DEFAULT 'Google Meet',
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS availability (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 6),
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE
+        )
+      `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS bookings (
+          id SERIAL PRIMARY KEY,
+          event_type_id INTEGER NOT NULL REFERENCES event_types(id) ON DELETE CASCADE,
+          booker_name TEXT NOT NULL,
+          booker_email TEXT NOT NULL,
+          date TEXT NOT NULL,
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled')),
+          notes TEXT,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('✅ Postgres tables initialized');
+    } finally {
+      client.release();
+    }
+  } else {
+    // Standard SQLite initialization
+    const SQL = await initSqlJs();
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        const fileBuffer = fs.readFileSync(DB_PATH);
+        db = new SQL.Database(fileBuffer);
+      } else {
+        db = new SQL.Database();
+      }
+    } catch (err) {
       db = new SQL.Database();
     }
-  } catch (err) {
-    db = new SQL.Database();
+    db.run('PRAGMA foreign_keys = ON');
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS event_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        duration INTEGER NOT NULL DEFAULT 30,
+        slug TEXT NOT NULL UNIQUE,
+        location TEXT DEFAULT 'Google Meet',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS availability (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 6),
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type_id INTEGER NOT NULL,
+        booker_name TEXT NOT NULL,
+        booker_email TEXT NOT NULL,
+        date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled')),
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_type_id) REFERENCES event_types(id) ON DELETE CASCADE
+      )
+    `);
+    saveDB();
+    console.log('✅ SQLite database initialized');
   }
-
-  // Enable foreign keys
-  db.run('PRAGMA foreign_keys = ON');
-
-  // Create tables if they don't exist
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS event_types (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT,
-      duration INTEGER NOT NULL DEFAULT 30,
-      slug TEXT NOT NULL UNIQUE,
-      location TEXT DEFAULT 'Google Meet',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS availability (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 6),
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS bookings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      event_type_id INTEGER NOT NULL,
-      booker_name TEXT NOT NULL,
-      booker_email TEXT NOT NULL,
-      date TEXT NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled')),
-      notes TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (event_type_id) REFERENCES event_types(id) ON DELETE CASCADE
-    )
-  `);
-
-  saveDB();
-  console.log('✅ Database initialized');
-  return db;
 }
 
-// Save the in-memory database to disk
 function saveDB() {
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
-}
-
-// Helper: run a SELECT query and return all rows as array of objects
-function queryAll(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
+  if (db) {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(DB_PATH, buffer);
   }
-  stmt.free();
-  return results;
 }
 
-// Helper: run a SELECT query and return the first row as object (or null)
-function queryOne(sql, params = []) {
-  const results = queryAll(sql, params);
-  return results.length > 0 ? results[0] : null;
+// Convert SQLite '?' to Postgres '$n'
+function sqliteToPostgres(sql) {
+  let index = 1;
+  return sql.replace(/\?/g, () => `$${index++}`);
 }
 
-// Helper: run an INSERT/UPDATE/DELETE and return { changes, lastId }
-function execute(sql, params = []) {
-  db.run(sql, params);
-  const lastId = db.exec('SELECT last_insert_rowid()')[0]?.values[0][0] || 0;
-  const changes = db.getRowsModified();
-  saveDB(); // Persist changes to disk
-  return { changes, lastId };
+async function queryAll(sql, params = []) {
+  if (usePostgres) {
+    const res = await pool.query(sqliteToPostgres(sql), params);
+    return res.rows;
+  } else {
+    const stmt = db.prepare(sql);
+    stmt.bind(params);
+    const results = [];
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  }
 }
 
-// Helper: run multiple statements (for transactions)
-function runSQL(sql) {
-  db.run(sql);
-  saveDB();
+async function queryOne(sql, params = []) {
+  const rows = await queryAll(sql, params);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+async function execute(sql, params = []) {
+  if (usePostgres) {
+    // Add RETURNING id if it's an insert to mimic last_insert_rowid
+    let finalSql = sqliteToPostgres(sql);
+    if (finalSql.trim().toLowerCase().startsWith('insert')) {
+      finalSql += ' RETURNING id';
+    }
+    const res = await pool.query(finalSql, params);
+    return { changes: res.rowCount, lastId: res.rows[0]?.id || 0 };
+  } else {
+    db.run(sql, params);
+    const lastId = db.exec('SELECT last_insert_rowid()')[0]?.values[0][0] || 0;
+    const changes = db.getRowsModified();
+    saveDB();
+    return { changes, lastId };
+  }
+}
+
+async function runSQL(sql) {
+  if (usePostgres) {
+    await pool.query(sql);
+  } else {
+    db.run(sql);
+    saveDB();
+  }
 }
 
 module.exports = { initDB, queryAll, queryOne, execute, runSQL, saveDB };
+
