@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import API_BASE_URL from "../config";
 
 /*
   Bookings.jsx - Bookings Dashboard
@@ -22,7 +23,7 @@ function Bookings() {
 
   async function fetchBookings() {
     try {
-      const res = await fetch('/api/bookings');
+      const res = await fetch(`${API_BASE_URL}/api/bookings`);
       const data = await res.json();
       setBookings(data);
     } catch (err) {

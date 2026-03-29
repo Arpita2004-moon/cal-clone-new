@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import API_BASE_URL from "../config";
+
 
 /*
   Dashboard.jsx - Event Types Management Page
@@ -35,7 +37,7 @@ function Dashboard() {
 
   async function fetchEventTypes() {
     try {
-      const res = await fetch("/api/event-types");
+      const res = await fetch(`${API_BASE_URL}/api/event-types`);
       const data = await res.json();
       // Ensure data is an array
       if (Array.isArray(data)) {
@@ -57,7 +59,7 @@ function Dashboard() {
     if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
 
     try {
-      await fetch(`/api/event-types/${id}`, { method: "DELETE" });
+      await fetch(`${API_BASE_URL}/api/event-types/${id}`, { method: "DELETE" });
       // Remove from local state (no need to refetch)
       setEventTypes((prev) => prev.filter((et) => et.id !== id));
     } catch (err) {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../config';
 
 /*
   PublicBooking.jsx - Public Booking Page
@@ -41,7 +42,7 @@ function PublicBooking() {
   useEffect(() => {
     async function fetchEvent() {
       try {
-        const res = await fetch(`/api/event-types/${slug}`);
+        const res = await fetch(`${API_BASE_URL}/api/event-types/${slug}`);
         if (!res.ok) throw new Error('Not found');
         const data = await res.json();
         setEventType(data);
@@ -62,7 +63,7 @@ function PublicBooking() {
       setSlotsLoading(true);
       try {
         const dateStr = formatDateStr(selectedDate);
-        const res = await fetch(`/api/availability/${dateStr}?eventSlug=${slug}`);
+        const res = await fetch(`${API_BASE_URL}/api/availability/${dateStr}?eventSlug=${slug}`);
         const data = await res.json();
         setTimeSlots(data);
       } catch (err) {
@@ -167,7 +168,7 @@ function PublicBooking() {
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/bookings', {
+      const res = await fetch(`${API_BASE_URL}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import API_BASE_URL from "../config";
 
 /*
   BookingConfirmation.jsx - Booking Confirmation Page
@@ -19,7 +20,7 @@ function BookingConfirmation() {
   useEffect(() => {
     async function fetchBooking() {
       try {
-        const res = await fetch(`/api/bookings/${id}`);
+        const res = await fetch(`${API_BASE_URL}/api/bookings/${id}`);
         const data = await res.json();
         setBooking(data);
       } catch (err) {

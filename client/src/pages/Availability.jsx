@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import API_BASE_URL from "../config";
 
 /*
   Availability.jsx - Weekly Availability Settings
@@ -26,7 +27,7 @@ function Availability() {
 
   async function fetchAvailability() {
     try {
-      const res = await fetch('/api/availability');
+      const res = await fetch(`${API_BASE_URL}/api/availability`);
       const data = await res.json();
 
       // Build a full 7-day schedule (fill in missing days with defaults)
@@ -69,7 +70,7 @@ function Availability() {
   async function handleSave() {
     setSaving(true);
     try {
-      await fetch('/api/availability', {
+      await fetch(`${API_BASE_URL}/api/availability`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slots }),

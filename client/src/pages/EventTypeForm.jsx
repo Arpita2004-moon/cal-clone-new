@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import API_BASE_URL from "../config";
+
 
 /*
   EventTypeForm.jsx - Create / Edit Event Type
@@ -36,9 +38,8 @@ function EventTypeForm() {
   async function fetchEventType() {
     try {
       // We need to fetch all and find by ID since our API uses slugs for GET
-      const res = await fetch("/api/event-types");
-      const events = await res.json();
-      const event = events.find((e) => e.id === Number(id));
+      const res = await fetch(`${API_BASE_URL}/api/event-types/${id}`);
+      const event = await res.json();
       if (event) {
         setForm({
           title: event.title,
@@ -82,7 +83,7 @@ function EventTypeForm() {
     setError("");
 
     try {
-      const url = isEditing ? `/api/event-types/${id}` : "/api/event-types";
+      const url = `${API_BASE_URL}/api/event-types${isEditing ? `/${id}` : ""}`;
       const method = isEditing ? "PUT" : "POST";
 
       // Ensure duration is a number
