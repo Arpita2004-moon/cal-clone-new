@@ -1,0 +1,23 @@
+{
+  "name": "booking-app",
+  "version": "1.0.0",
+  "description": "A booking application with client and server",
+  "main": "index.js",
+  "scripts": {
+    "client": "cd client && npm start",
+    "server": "cd server && npm start",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "client:install": "cd client && npm install",
+    "server:install": "cd server && npm install"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ]
+}
